@@ -39,7 +39,7 @@ func declareQueue(ch *amqp.Channel, queueName string) (amqp.Queue, error) {
 		queueName, // name
 		true,      // durable
 		false,     // delete when unused
-		true,      // exclusive
+		false,     // exclusive
 		false,     // no-wait
 		nil,       // arguments
 	)
