@@ -17,31 +17,25 @@ func getEnv(key string) string {
 
 }
 
-func ConnectSubscriber(reply chan string, exchange string) {
-
+func connect() (*amqp.Connection, error) {
 	conn, err := amqp.Dial(getEnv("AMQP_HOST"))
+	return conn, err
+}
 
-	failOnError(err, "[SUBSCRIBER] Failed to connect")
-
-	defer conn.Close()
-
-	ch, _ := conn.Channel()
-
-	defer ch.Close()
-
-	err = ch.ExchangeDeclare(
+func exchangeDeclare(ch *amqp.Channel, excType, exchange string) error {
+	return ch.ExchangeDeclare(
 		exchange,
-		"fanout",
+		excType,
 		true,
 		false,
 		false,
 		false,
 		nil,
 	)
+}
 
-	failOnError(err, "[SUBSCRIBER] failed to declare exchange")
-
-	q, err := ch.QueueDeclare(
+func declareQueue(ch *amqp.Channel) (amqp.Queue, error) {
+	return ch.QueueDeclare(
 		"",    // name
 		false, // durable
 		false, // delete when unused
@@ -49,21 +43,21 @@ func ConnectSubscriber(reply chan string, exchange string) {
 		false, // no-wait
 		nil,   // arguments
 	)
+}
 
-	failOnError(err, "[SUBSCRIBER] failed to declare queue")
-
-	err = ch.QueueBind(
-		q.Name,
-		"",
+func bindQueue(ch *amqp.Channel, queueName, exchange, routeKey string) error {
+	return ch.QueueBind(
+		queueName,
+		routeKey,
 		exchange,
 		false,
 		nil,
 	)
+}
 
-	failOnError(err, "[SUBSCRIBER] Fail to bind")
-
-	msgs, _ := ch.Consume(
-		q.Name,
+func consume(ch *amqp.Channel, queueName string) (<-chan amqp.Delivery, error) {
+	return ch.Consume(
+		queueName,
 		"",
 		true,
 		false,
@@ -71,7 +65,34 @@ func ConnectSubscriber(reply chan string, exchange string) {
 		false,
 		nil,
 	)
+}
 
+func publish(ch *amqp.Channel, exchange, msg, routeKey string) error {
+	return ch.Publish(
+		exchange, // exchange
+		routeKey, // routing key
+		false,    // mandatory
+		false,    // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(msg),
+		})
+}
+
+func ConnectSubscriber(reply chan string, exchange string) {
+
+	conn, err := connect()
+	failOnError(err, "[SUBSCRIBER] Failed to connect")
+	defer conn.Close()
+	ch, _ := conn.Channel()
+	defer ch.Close()
+	err = exchangeDeclare(ch, "fanout", exchange)
+	failOnError(err, "[SUBSCRIBER] failed to declare exchange")
+	q, err := declareQueue(ch)
+	failOnError(err, "[SUBSCRIBER] failed to declare queue")
+	err = bindQueue(ch, q.Name, exchange, "")
+	failOnError(err, "[SUBSCRIBER] Fail to bind")
+	msgs, _ := consume(ch, q.Name)
 	forever := make(chan bool)
 
 	go func() {
@@ -87,7 +108,7 @@ func ConnectSubscriber(reply chan string, exchange string) {
 }
 
 func ConnectPublisher(listen chan string, exchange string) {
-	conn, err := amqp.Dial(getEnv("AMQP_HOST"))
+	conn, err := connect()
 	failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
 	defer conn.Close()
 
@@ -95,30 +116,63 @@ func ConnectPublisher(listen chan string, exchange string) {
 	failOnError(err, "[PUBLISHER] Failed to open a channel")
 	defer ch.Close()
 
-	err = ch.ExchangeDeclare(
-		exchange, // name
-		"fanout", // type
-		true,     // durable
-		false,    // auto-deleted
-		false,    // internal
-		false,    // no-wait
-		nil,      // arguments
-	)
+	err = exchangeDeclare(ch, "fanout", exchange)
 	failOnError(err, "[PUBLISHER] Failed to declare an exchange")
 
 	for {
-
 		msg := <-listen
+		err = publish(ch, exchange, msg, "")
+		failOnError(err, "[PUBLISHER] Failed to publish a message")
 
-		err = ch.Publish(
-			exchange, // exchange
-			"",       // routing key
-			false,    // mandatory
-			false,    // immediate
-			amqp.Publishing{
-				ContentType: "text/plain",
-				Body:        []byte(msg),
-			})
+		if getEnv("RABBIT_ENV") != "" {
+			fmt.Printf("[x] Sent %s\n", msg)
+		}
+	}
+
+}
+
+func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
+	conn, err := connect()
+	failOnError(err, "[SUBSCRIBER] Failed to connect")
+	defer conn.Close()
+	ch, _ := conn.Channel()
+	defer ch.Close()
+	err = exchangeDeclare(ch, "direct", exchange)
+	failOnError(err, "[SUBSCRIBER] failed to declare exchange")
+	q, err := declareQueue(ch)
+	failOnError(err, "[SUBSCRIBER] failed to declare queue")
+	err = bindQueue(ch, q.Name, exchange, routeKey)
+	failOnError(err, "[SUBSCRIBER] Fail to bind")
+	msgs, _ := consume(ch, q.Name)
+	forever := make(chan bool)
+
+	go func() {
+		for d := range msgs {
+			fmt.Printf("[SUBSCRIBE] %s\n", string(d.Body))
+			reply <- string(d.Body)
+		}
+	}()
+
+	fmt.Println("[RABBITMAN] Waiting for messages")
+	<-forever
+	fmt.Println("[RABBITMAN] Exiting?")
+}
+
+func ConnectPublisherDirect(listen chan string, exchange, routeKey string) {
+	conn, err := connect()
+	failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	failOnError(err, "[PUBLISHER] Failed to open a channel")
+	defer ch.Close()
+
+	err = exchangeDeclare(ch, "direct", exchange)
+	failOnError(err, "[PUBLISHER] Failed to declare an exchange")
+
+	for {
+		msg := <-listen
+		err = publish(ch, exchange, msg, routeKey)
 		failOnError(err, "[PUBLISHER] Failed to publish a message")
 
 		if getEnv("RABBIT_ENV") != "" {
