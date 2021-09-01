@@ -36,7 +36,7 @@ Direct tip bir exchange üzerinde farklı routing keyler ile mesajın yönlendir
 ```go
 func readerEvenDirect(who int) {
 	listen := make(chan string)
-	go rabbitmodule.ConnectSubscriberDirect(listen2, "mydirecttopic", "numbers.even")
+	go rabbitmodule.ConnectSubscriberDirect(listen, "mydirecttopic", "numbers.even")
 	for {
 		msg := <-listen
 		fmt.Printf("%d Received: %s\n", who, msg)
@@ -45,7 +45,7 @@ func readerEvenDirect(who int) {
 
 func readerOddDirect(who int) {
 	listen := make(chan string)
-	go rabbitmodule.ConnectSubscriberDirect(listen2, "mydirecttopic", "numbers.odd")
+	go rabbitmodule.ConnectSubscriberDirect(listen, "mydirecttopic", "numbers.odd")
 	for {
 		msg := <-listen
 		fmt.Printf("%d Received: %s\n", who, msg)
