@@ -33,7 +33,7 @@ func reader() {
 
 Direct tip bir exchange üzerinde farklı routing keyler ile mesajın yönlendirilmesidir. Severity parametresine göre log mesajlarını farklı şekilde işlemek istiyorsanız bunu tercih edin.
 
-```
+```go
 func readerEvenDirect(who int) {
 	listen := make(chan string)
 	go rabbitmodule.ConnectSubscriberDirect(listen2, "mydirecttopic", "numbers.even")
@@ -72,7 +72,7 @@ func writerDirect() {
 
 Aynı tipte mesajları birden çok subscriber'a round-robin (sırayla) dağıtmak istiyorsanız bunu tercih edin.
 
-```
+```go
 // Bu taskı minimum 2 instance kaldırın.
 func readerTaskWorker(who int) {
 	myChan := make(chan string)
