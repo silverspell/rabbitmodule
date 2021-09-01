@@ -1,4 +1,4 @@
-module gitlab.com/martitech/backend/rabbitmodule
+module github.com/silverspell/rabbitmodule
 
 go 1.16
 
