@@ -7,8 +7,19 @@ import (
 	"github.com/streadway/amqp"
 )
 
+func getEnv(key string) string {
+	var env string
+	var ok bool
+	if env, ok = os.LookupEnv(key); !ok {
+		return ""
+	}
+	return env
+
+}
+
 func ConnectSubscriber(reply chan string, exchange string) {
-	conn, err := amqp.Dial(os.Getenv("AMQP_HOST"))
+
+	conn, err := amqp.Dial(getEnv("AMQP_HOST"))
 
 	failOnError(err, "[SUBSCRIBER] Failed to connect")
 
@@ -76,7 +87,7 @@ func ConnectSubscriber(reply chan string, exchange string) {
 }
 
 func ConnectPublisher(listen chan string, exchange string) {
-	conn, err := amqp.Dial(os.Getenv("AMQP_HOST"))
+	conn, err := amqp.Dial(getEnv("AMQP_HOST"))
 	failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
 	defer conn.Close()
 
@@ -109,7 +120,10 @@ func ConnectPublisher(listen chan string, exchange string) {
 				Body:        []byte(msg),
 			})
 		failOnError(err, "[PUBLISHER] Failed to publish a message")
-		fmt.Printf(" [x] Sent %s", msg)
+
+		if getEnv("RABBIT_ENV") != "" {
+			fmt.Printf("[x] Sent %s\n", msg)
+		}
 	}
 
 }
