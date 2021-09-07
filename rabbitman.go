@@ -1,11 +1,14 @@
 package rabbitmodule
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/streadway/amqp"
 )
+
+var E chan error = make(chan error)
 
 func getEnv(key string) string {
 	var env string
@@ -19,6 +22,10 @@ func getEnv(key string) string {
 
 func connect() (*amqp.Connection, error) {
 	conn, err := amqp.Dial(getEnv("AMQP_HOST"))
+	go func() {
+		<-conn.NotifyClose(make(chan *amqp.Error))
+		E <- errors.New("connection closed")
+	}()
 	return conn, err
 }
 
