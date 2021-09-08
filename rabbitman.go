@@ -26,6 +26,7 @@ func connect() (*amqp.Connection, error) {
 		<-conn.NotifyClose(make(chan *amqp.Error))
 		E <- errors.New("connection closed")
 	}()
+
 	return conn, err
 }
 
@@ -100,7 +101,6 @@ func ConnectSubscriber(reply chan string, exchange string) {
 	err = bindQueue(ch, q.Name, exchange, "")
 	failOnError(err, "[SUBSCRIBER] Fail to bind")
 	msgs, _ := consume(ch, q.Name)
-	forever := make(chan bool)
 
 	go func() {
 		for d := range msgs {
@@ -111,7 +111,8 @@ func ConnectSubscriber(reply chan string, exchange string) {
 	}()
 
 	fmt.Println("[RABBITMAN] Waiting for messages")
-	<-forever
+	<-E
+	reconnect(reply, exchange, "", nil, ConnectSubscriber)
 	fmt.Println("[RABBITMAN] Exiting?")
 }
 
@@ -128,12 +129,17 @@ func ConnectPublisher(listen chan string, exchange string) {
 	failOnError(err, "[PUBLISHER] Failed to declare an exchange")
 
 	for {
-		msg := <-listen
-		err = publish(ch, exchange, msg, "")
-		failOnError(err, "[PUBLISHER] Failed to publish a message")
+		select {
+		case msg := <-listen:
+			err = publish(ch, exchange, msg, "")
+			failOnError(err, "[PUBLISHER] Failed to publish a message")
 
-		if getEnv("RABBIT_ENV") != "" {
-			fmt.Printf("[x] Sent %s\n", msg)
+			if getEnv("RABBIT_ENV") != "" {
+				fmt.Printf("[x] Sent %s\n", msg)
+			}
+		case e := <-E:
+			fmt.Printf("Error %+v\n", e)
+			reconnect(listen, exchange, "", nil, ConnectPublisher)
 		}
 	}
 
@@ -152,7 +158,6 @@ func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
 	err = bindQueue(ch, q.Name, exchange, routeKey)
 	failOnError(err, "[SUBSCRIBER] Fail to bind")
 	msgs, _ := consume(ch, q.Name)
-	forever := make(chan bool)
 
 	go func() {
 		for d := range msgs {
@@ -163,7 +168,8 @@ func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
 	}()
 
 	fmt.Println("[RABBITMAN] Waiting for messages")
-	<-forever
+	<-E
+	reconnect(reply, exchange, routeKey, ConnectSubscriberDirect, nil)
 	fmt.Println("[RABBITMAN] Exiting?")
 }
 
@@ -180,12 +186,17 @@ func ConnectPublisherDirect(listen chan string, exchange, routeKey string) {
 	failOnError(err, "[PUBLISHER] Failed to declare an exchange")
 
 	for {
-		msg := <-listen
-		err = publish(ch, exchange, msg, routeKey)
-		failOnError(err, "[PUBLISHER] Failed to publish a message")
+		select {
+		case msg := <-listen:
+			err = publish(ch, exchange, msg, routeKey)
+			failOnError(err, "[PUBLISHER] Failed to publish a message")
 
-		if getEnv("RABBIT_ENV") != "" {
-			fmt.Printf("[x] Sent %s\n", msg)
+			if getEnv("RABBIT_ENV") != "" {
+				fmt.Printf("[x] Sent %s\n", msg)
+			}
+		case e := <-E:
+			fmt.Printf("Error %+v\n", e)
+			reconnect(listen, exchange, routeKey, ConnectPublisherDirect, nil)
 		}
 	}
 }
@@ -202,8 +213,6 @@ func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
 	failOnError(err, "[SUSBCRIBER] failed to set qos")
 	msgs, _ := consume(ch, q.Name)
 
-	forever := make(chan bool)
-
 	go func() {
 		for d := range msgs {
 			fmt.Printf("[SUBSCRIBE] %s\n", string(d.Body))
@@ -213,8 +222,9 @@ func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
 	}()
 
 	fmt.Println("[RABBITMAN] Waiting for messages")
-	<-forever
-	fmt.Println("[RABBITMAN] Exiting?")
+	<-E
+	reconnect(reply, queueName, "", nil, ConnectSubscriberTaskQueue)
+	fmt.Println("[RABBITMAN] Reconenct")
 }
 
 func ConnectPublisherTaskQueue(listen chan string, queueName string) {
@@ -229,12 +239,29 @@ func ConnectPublisherTaskQueue(listen chan string, queueName string) {
 	q, err := declareQueue(ch, queueName)
 	failOnError(err, "[PUBLISHER] failed to declare Queue")
 	for {
-		msg := <-listen
-		err = publish(ch, "", msg, q.Name)
-		failOnError(err, "[PUBLISHER] Failed to publish a message")
 
-		if getEnv("RABBIT_ENV") != "" {
-			fmt.Printf("[x] Sent %s\n", msg)
+		select {
+		case msg := <-listen:
+			err = publish(ch, "", msg, q.Name)
+			failOnError(err, "[PUBLISHER] Failed to publish a message")
+
+			if getEnv("RABBIT_ENV") != "" {
+				fmt.Printf("[x] Sent %s\n", msg)
+			}
+		case e := <-E:
+			fmt.Printf("Error %+v\n", e)
+			reconnect(listen, queueName, "", nil, ConnectPublisherTaskQueue)
 		}
+
 	}
+}
+
+func reconnect(c chan string, p1, p2 string, f func(chan string, string, string), f2 func(chan string, string)) {
+
+	if f != nil { // direct queue
+		f(c, p1, p2)
+	} else {
+		f2(c, p1)
+	}
+
 }
