@@ -274,6 +274,11 @@ func ConnectPublisherTaskQueue(listen chan string, queueName string) {
 }
 
 func reconnect(c chan string, p1, p2 string, f func(chan string, string, string), f2 func(chan string, string)) {
+
+	if Conn == nil || Conn.IsClosed() {
+		connect()
+	}
+
 	if f != nil { // direct queue
 		f(c, p1, p2)
 	} else {
