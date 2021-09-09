@@ -22,7 +22,8 @@ func getEnv(key string) string {
 }
 
 func connect() error {
-	conn, err := amqp.Dial(getEnv("AMQP_HOST"))
+	var err error
+	conn, err = amqp.Dial(getEnv("AMQP_HOST"))
 	go func() {
 		<-conn.NotifyClose(make(chan *amqp.Error))
 		E <- errors.New("connection closed")
