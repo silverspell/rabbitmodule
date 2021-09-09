@@ -277,7 +277,6 @@ func reconnect(c chan string, p1, p2 string, f func(chan string, string, string)
 
 	if Conn == nil || Conn.IsClosed() {
 		Conn = nil
-		connect()
 	}
 
 	if f != nil { // direct queue
