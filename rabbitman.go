@@ -9,6 +9,7 @@ import (
 )
 
 var E chan error = make(chan error)
+var conn *amqp.Connection
 
 func getEnv(key string) string {
 	var env string
@@ -20,14 +21,14 @@ func getEnv(key string) string {
 
 }
 
-func connect() (*amqp.Connection, error) {
+func connect() error {
 	conn, err := amqp.Dial(getEnv("AMQP_HOST"))
 	go func() {
 		<-conn.NotifyClose(make(chan *amqp.Error))
 		E <- errors.New("connection closed")
 	}()
 
-	return conn, err
+	return err
 }
 
 func exchangeDeclare(ch *amqp.Channel, excType, exchange string) error {
@@ -89,12 +90,13 @@ func publish(ch *amqp.Channel, exchange, msg, routeKey string) error {
 
 func ConnectSubscriber(reply chan string, exchange string) {
 
-	conn, err := connect()
-	failOnError(err, "[SUBSCRIBER] Failed to connect")
-	defer conn.Close()
+	if conn == nil {
+		err := connect()
+		failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
+	}
 	ch, _ := conn.Channel()
 	defer ch.Close()
-	err = exchangeDeclare(ch, "fanout", exchange)
+	err := exchangeDeclare(ch, "fanout", exchange)
 	failOnError(err, "[SUBSCRIBER] failed to declare exchange")
 	q, err := declareQueue(ch, "")
 	failOnError(err, "[SUBSCRIBER] failed to declare queue")
@@ -117,9 +119,10 @@ func ConnectSubscriber(reply chan string, exchange string) {
 }
 
 func ConnectPublisher(listen chan string, exchange string) {
-	conn, err := connect()
-	failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
-	defer conn.Close()
+	if conn == nil {
+		err := connect()
+		failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
+	}
 
 	ch, err := conn.Channel()
 	failOnError(err, "[PUBLISHER] Failed to open a channel")
@@ -146,12 +149,13 @@ func ConnectPublisher(listen chan string, exchange string) {
 }
 
 func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
-	conn, err := connect()
-	failOnError(err, "[SUBSCRIBER] Failed to connect")
-	defer conn.Close()
+	if conn == nil {
+		err := connect()
+		failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
+	}
 	ch, _ := conn.Channel()
 	defer ch.Close()
-	err = exchangeDeclare(ch, "direct", exchange)
+	err := exchangeDeclare(ch, "direct", exchange)
 	failOnError(err, "[SUBSCRIBER] failed to declare exchange")
 	q, err := declareQueue(ch, "")
 	failOnError(err, "[SUBSCRIBER] failed to declare queue")
@@ -174,9 +178,10 @@ func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
 }
 
 func ConnectPublisherDirect(listen chan string, exchange, routeKey string) {
-	conn, err := connect()
-	failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
-	defer conn.Close()
+	if conn == nil {
+		err := connect()
+		failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
+	}
 
 	ch, err := conn.Channel()
 	failOnError(err, "[PUBLISHER] Failed to open a channel")
@@ -202,9 +207,10 @@ func ConnectPublisherDirect(listen chan string, exchange, routeKey string) {
 }
 
 func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
-	conn, err := connect()
-	failOnError(err, "[SUBSCRIBER] Failed to connect")
-	defer conn.Close()
+	if conn == nil {
+		err := connect()
+		failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
+	}
 	ch, _ := conn.Channel()
 	defer ch.Close()
 	q, err := declareQueue(ch, queueName)
@@ -228,9 +234,10 @@ func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
 }
 
 func ConnectPublisherTaskQueue(listen chan string, queueName string) {
-	conn, err := connect()
-	failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
-	defer conn.Close()
+	if conn == nil {
+		err := connect()
+		failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
+	}
 
 	ch, err := conn.Channel()
 	failOnError(err, "[PUBLISHER] Failed to open a channel")
