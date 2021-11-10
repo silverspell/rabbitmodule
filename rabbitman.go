@@ -10,6 +10,7 @@ import (
 )
 
 var E chan error = make(chan error)
+var SubscriberError chan error = make(chan error)
 var Conn *amqp.Connection = nil
 var Sugar *zap.SugaredLogger
 
@@ -99,7 +100,7 @@ func publish(ch *amqp.Channel, exchange, msg, routeKey string) error {
 }
 
 func ConnectSubscriber(reply chan string, exchange string) {
-
+	errChan := make(chan error)
 	if Conn == nil {
 		err := connect()
 		failOnError(err, "[PUBLISHER] Failed to connect to RabbitMQ")
@@ -120,12 +121,13 @@ func ConnectSubscriber(reply chan string, exchange string) {
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
-		E <- fmt.Errorf("Rabbit error %s", exchange)
+		errChan <- fmt.Errorf("rabbit error %s", exchange)
 	}()
 
 	Sugar.Info("[RABBITMAN] Waiting for messages")
-	<-E
-	reconnect(reply, exchange, "", nil, ConnectSubscriber)
+	err = <-errChan
+	Sugar.Infof("Fanout error %+v", err)
+	go reconnect(reply, exchange, "", nil, ConnectSubscriber)
 	Sugar.Info("[RABBITMAN] Exiting?")
 }
 
@@ -153,7 +155,7 @@ func ConnectPublisher(listen chan string, exchange string) {
 			}
 		case e := <-E:
 			Sugar.Infof("Trying to reconnect..... Error %+v\n", e)
-			reconnect(listen, exchange, "", nil, ConnectPublisher)
+			go reconnect(listen, exchange, "", nil, ConnectPublisher)
 		}
 	}
 
@@ -173,19 +175,20 @@ func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
 	err = bindQueue(ch, q.Name, exchange, routeKey)
 	failOnError(err, "[SUBSCRIBER] Fail to bind")
 	msgs, _ := consume(ch, q.Name)
-
+	errChan := make(chan error)
 	go func() {
 		for d := range msgs {
 			Sugar.Infof("[SUBSCRIBE] %s\n", string(d.Body))
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
-		E <- fmt.Errorf("Rabbit error %s", exchange)
+		errChan <- fmt.Errorf("rabbit error %s", exchange)
 	}()
 
 	Sugar.Info("[RABBITMAN] Waiting for messages")
-	<-E
-	reconnect(reply, exchange, routeKey, ConnectSubscriberDirect, nil)
+	err = <-errChan
+	Sugar.Infof("Direct error %+v", err)
+	go reconnect(reply, exchange, routeKey, ConnectSubscriberDirect, nil)
 	Sugar.Info("[RABBITMAN] Exiting?")
 }
 
@@ -213,7 +216,7 @@ func ConnectPublisherDirect(listen chan string, exchange, routeKey string) {
 			}
 		case e := <-E:
 			Sugar.Infof("Error %+v\n", e)
-			reconnect(listen, exchange, routeKey, ConnectPublisherDirect, nil)
+			go reconnect(listen, exchange, routeKey, ConnectPublisherDirect, nil)
 		}
 	}
 }
@@ -230,20 +233,21 @@ func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
 	err = ch.Qos(1, 0, false) //prefetch count, prefetch size
 	failOnError(err, "[SUSBCRIBER] failed to set qos")
 	msgs, _ := consume(ch, q.Name)
-
+	errChan := make(chan error)
 	go func() {
 		for d := range msgs {
 			Sugar.Infof("[SUBSCRIBE] %s => %s\n", queueName, string(d.Body))
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
-		E <- fmt.Errorf("Rabbit error %s", queueName)
+		errChan <- fmt.Errorf("rabbit error %s", queueName)
 	}()
 
 	Sugar.Info("[RABBITMAN] Waiting for messages")
-	<-E
-	reconnect(reply, queueName, "", nil, ConnectSubscriberTaskQueue)
-	Sugar.Info("[RABBITMAN] Reconenct")
+	err = <-errChan
+	Sugar.Infof("TaskQueue error %+v", err)
+	go reconnect(reply, queueName, "", nil, ConnectSubscriberTaskQueue)
+	Sugar.Info("[RABBITMAN] Reconnect")
 }
 
 func ConnectPublisherTaskQueue(listen chan string, queueName string) {
@@ -270,7 +274,7 @@ func ConnectPublisherTaskQueue(listen chan string, queueName string) {
 			}
 		case e := <-E:
 			Sugar.Infof("Error %+v\n", e)
-			reconnect(listen, queueName, "", nil, ConnectPublisherTaskQueue)
+			go reconnect(listen, queueName, "", nil, ConnectPublisherTaskQueue)
 		}
 
 	}
