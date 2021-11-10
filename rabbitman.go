@@ -120,6 +120,7 @@ func ConnectSubscriber(reply chan string, exchange string) {
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
+		E <- fmt.Errorf("Rabbit error %s", exchange)
 	}()
 
 	Sugar.Info("[RABBITMAN] Waiting for messages")
@@ -179,6 +180,7 @@ func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
+		E <- fmt.Errorf("Rabbit error %s", exchange)
 	}()
 
 	Sugar.Info("[RABBITMAN] Waiting for messages")
@@ -231,10 +233,11 @@ func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
 
 	go func() {
 		for d := range msgs {
-			Sugar.Infof("[SUBSCRIBE] %s\n", string(d.Body))
+			Sugar.Infof("[SUBSCRIBE] %s => %s\n", queueName, string(d.Body))
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
+		E <- fmt.Errorf("Rabbit error %s", queueName)
 	}()
 
 	Sugar.Info("[RABBITMAN] Waiting for messages")
@@ -260,7 +263,7 @@ func ConnectPublisherTaskQueue(listen chan string, queueName string) {
 		select {
 		case msg := <-listen:
 			err = publish(ch, "", msg, q.Name)
-			failOnError(err, "[PUBLISHER] Failed to publish a message")
+			failOnError(err, fmt.Sprintf("[PUBLISHER] Failed to publish a message, %s\n", q.Name))
 
 			if getEnv("RABBIT_ENV") != "" {
 				Sugar.Infof("[x] Sent %s\n", msg)
@@ -275,6 +278,7 @@ func ConnectPublisherTaskQueue(listen chan string, queueName string) {
 
 func reconnect(c chan string, p1, p2 string, f func(chan string, string, string), f2 func(chan string, string)) {
 
+	fmt.Printf("Reconnecting %s %s\n", p1, p2)
 	if Conn == nil || Conn.IsClosed() {
 		Conn = nil
 	}
