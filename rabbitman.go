@@ -230,7 +230,7 @@ func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
 	defer ch.Close()
 	q, err := declareQueue(ch, queueName)
 	failOnError(err, "[SUBSCRIBER] failed to declare queue")
-	err = ch.Qos(1, 0, false) //prefetch count, prefetch size
+	err = ch.Qos(5, 0, false) //prefetch count, prefetch size
 	failOnError(err, "[SUSBCRIBER] failed to set qos")
 	msgs, _ := consume(ch, q.Name)
 	errChan := make(chan error)
