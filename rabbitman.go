@@ -55,10 +55,12 @@ func exchangeDeclare(ch *amqp.Channel, excType, exchange string) error {
 }
 
 func declareQueue(ch *amqp.Channel, queueName string) (amqp.Queue, error) {
+	args := make(amqp.Table)
+	args["x-message-ttl"] = int32(300000)
 	return ch.QueueDeclare(
 		queueName, // name
-		true,      // durable
-		false,     // delete when unused
+		false,     // durable
+		true,      // delete when unused
 		false,     // exclusive
 		false,     // no-wait
 		nil,       // arguments
