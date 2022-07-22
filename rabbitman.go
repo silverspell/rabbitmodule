@@ -47,7 +47,7 @@ func exchangeDeclare(ch *amqp.Channel, excType, exchange string) error {
 		exchange,
 		excType,
 		true,
-		false,
+		true,
 		false,
 		false,
 		nil,
