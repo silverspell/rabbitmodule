@@ -1,8 +1,10 @@
 package rabbitmodule
 
+import "fmt"
+
 func failOnError(err error, msg string) {
 	if err != nil {
-		Sugar.Infof("%s: %s", msg, err)
+		fmt.Printf("%s: %s", msg, err)
 		panic(err)
 	}
 }

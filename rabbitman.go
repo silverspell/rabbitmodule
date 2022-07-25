@@ -6,13 +6,11 @@ import (
 	"os"
 
 	"github.com/streadway/amqp"
-	"go.uber.org/zap"
 )
 
 var E chan error = make(chan error)
 var SubscriberError chan error = make(chan error)
 var Conn *amqp.Connection = nil
-var Sugar *zap.SugaredLogger
 
 func getEnv(key string) string {
 	var env string
@@ -22,12 +20,6 @@ func getEnv(key string) string {
 	}
 	return env
 
-}
-
-func init() {
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	Sugar = logger.Sugar()
 }
 
 func connect() error {
@@ -58,7 +50,7 @@ func declareQueue(ch *amqp.Channel, queueName string) (amqp.Queue, error) {
 	return ch.QueueDeclare(
 		queueName, // name
 		false,     // durable
-		true,      // delete when unused
+		false,     // delete when unused
 		false,     // exclusive
 		false,     // no-wait
 		nil,       // arguments
@@ -76,9 +68,13 @@ func bindQueue(ch *amqp.Channel, queueName, exchange, routeKey string) error {
 }
 
 func consume(ch *amqp.Channel, queueName string) (<-chan amqp.Delivery, error) {
+	ctag := getEnv("AMQP_CTAG")
+	if ctag == "" {
+		ctag = "anon"
+	}
 	return ch.Consume(
 		queueName,
-		"",
+		ctag,
 		false,
 		false,
 		false,
@@ -117,18 +113,18 @@ func ConnectSubscriber(reply chan string, exchange string) {
 
 	go func() {
 		for d := range msgs {
-			Sugar.Infof("[SUBSCRIBE] %s\n", string(d.Body))
+			fmt.Printf("[SUBSCRIBE] %s\n", string(d.Body))
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
 		errChan <- fmt.Errorf("rabbit error %s", exchange)
 	}()
 
-	Sugar.Info("[RABBITMAN] Waiting for messages")
+	fmt.Println("[RABBITMAN] Waiting for messages")
 	err = <-errChan
-	Sugar.Infof("Fanout error %+v", err)
+	fmt.Printf("Fanout error %+v", err)
 	go reconnect(reply, exchange, "", nil, ConnectSubscriber)
-	Sugar.Info("[RABBITMAN] Exiting?")
+	fmt.Println("[RABBITMAN] Exiting?")
 }
 
 func ConnectPublisher(listen chan string, exchange string) {
@@ -154,7 +150,7 @@ func ConnectPublisher(listen chan string, exchange string) {
 				fmt.Printf("[x] Sent %s\n", msg)
 			}
 		case e := <-E:
-			Sugar.Infof("Trying to reconnect..... Error %+v\n", e)
+			fmt.Printf("Trying to reconnect..... Error %+v\n", e)
 			go reconnect(listen, exchange, "", nil, ConnectPublisher)
 		}
 	}
@@ -178,18 +174,18 @@ func ConnectSubscriberDirect(reply chan string, exchange, routeKey string) {
 	errChan := make(chan error)
 	go func() {
 		for d := range msgs {
-			Sugar.Infof("[SUBSCRIBE] %s\n", string(d.Body))
+			fmt.Printf("[SUBSCRIBE] %s\n", string(d.Body))
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
 		errChan <- fmt.Errorf("rabbit error %s", exchange)
 	}()
 
-	Sugar.Info("[RABBITMAN] Waiting for messages")
+	fmt.Println("[RABBITMAN] Waiting for messages")
 	err = <-errChan
-	Sugar.Infof("Direct error %+v", err)
+	fmt.Printf("Direct error %+v", err)
 	go reconnect(reply, exchange, routeKey, ConnectSubscriberDirect, nil)
-	Sugar.Info("[RABBITMAN] Exiting?")
+	fmt.Println("[RABBITMAN] Exiting?")
 }
 
 func ConnectPublisherDirect(listen chan string, exchange, routeKey string) {
@@ -212,10 +208,10 @@ func ConnectPublisherDirect(listen chan string, exchange, routeKey string) {
 			failOnError(err, "[PUBLISHER] Failed to publish a message")
 
 			if getEnv("RABBIT_ENV") != "" {
-				Sugar.Infof("[x] Sent %s\n", msg)
+				fmt.Printf("[x] Sent %s\n", msg)
 			}
 		case e := <-E:
-			Sugar.Infof("Error %+v\n", e)
+			fmt.Printf("Error %+v\n", e)
 			go reconnect(listen, exchange, routeKey, ConnectPublisherDirect, nil)
 		}
 	}
@@ -236,18 +232,18 @@ func ConnectSubscriberTaskQueue(reply chan string, queueName string) {
 	errChan := make(chan error)
 	go func() {
 		for d := range msgs {
-			Sugar.Infof("[SUBSCRIBE] %s => %s\n", queueName, string(d.Body))
+			fmt.Printf("[SUBSCRIBE] %s => %s\n", queueName, string(d.Body))
 			reply <- string(d.Body)
 			d.Ack(false)
 		}
 		errChan <- fmt.Errorf("rabbit error %s", queueName)
 	}()
 
-	Sugar.Info("[RABBITMAN] Waiting for messages")
+	fmt.Println("[RABBITMAN] Waiting for messages")
 	err = <-errChan
-	Sugar.Infof("TaskQueue error %+v", err)
+	fmt.Printf("TaskQueue error %+v", err)
 	go reconnect(reply, queueName, "", nil, ConnectSubscriberTaskQueue)
-	Sugar.Info("[RABBITMAN] Reconnect")
+	fmt.Println("[RABBITMAN] Reconnect")
 }
 
 func ConnectPublisherTaskQueue(listen chan string, queueName string) {
@@ -270,10 +266,10 @@ func ConnectPublisherTaskQueue(listen chan string, queueName string) {
 			failOnError(err, fmt.Sprintf("[PUBLISHER] Failed to publish a message, %s\n", q.Name))
 
 			if getEnv("RABBIT_ENV") != "" {
-				Sugar.Infof("[x] Sent %s\n", msg)
+				fmt.Printf("[x] Sent %s\n", msg)
 			}
 		case e := <-E:
-			Sugar.Infof("Error %+v\n", e)
+			fmt.Printf("Error %+v\n", e)
 			go reconnect(listen, queueName, "", nil, ConnectPublisherTaskQueue)
 		}
 
