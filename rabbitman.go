@@ -38,8 +38,8 @@ func exchangeDeclare(ch *amqp.Channel, excType, exchange string) error {
 	return ch.ExchangeDeclare(
 		exchange,
 		excType,
-		false,
 		true,
+		false,
 		false,
 		false,
 		nil,
@@ -49,7 +49,7 @@ func exchangeDeclare(ch *amqp.Channel, excType, exchange string) error {
 func declareQueue(ch *amqp.Channel, queueName string) (amqp.Queue, error) {
 	return ch.QueueDeclare(
 		queueName, // name
-		false,     // durable
+		true,      // durable
 		false,     // delete when unused
 		false,     // exclusive
 		false,     // no-wait
